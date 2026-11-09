@@ -1,0 +1,12 @@
+{
+  "name": "matchapro-assistant",
+  "version": "2.4.0",
+  "private": true,
+  "description": "Userscript Tampermonkey untuk Matching Manual SBR (SE2026) di MatchaPro",
+  "scripts": {
+    "test": "node tests/rules.test.js && node tests/loop.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}
