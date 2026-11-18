@@ -42,11 +42,10 @@ Empat pertanyaan berurutan; jawaban "ya" pertama menentukan aksi.
 | 2 | Tidak ada kandidat sama sekali? | **Unmatch** |
 | 3 | Tepat 1 kandidat *kuat*, tanpa pesaing? | **Match** (aturan 2) |
 | 4 | Semua kandidat *jelas bukan*? | **Unmatch** (aturan 4/5) |
-| – | Ada kandidat yang mungkin cocok (aturan 3, atau ≥2 kandidat cocok) | **Review dengan peta** |
-| – | Selain itu | **Skip** |
+| – | Ada kandidat dengan nama pengusaha & desa sama, tapi alamat beda / lebih dari satu kandidat | **Review dengan peta** (aturan 3) |
 
 - **Kandidat kuat:** wilayah sama sampai desa; nama pengusaha sama persis (≥2 kata, atau 1 kata bila jenis usahanya juga sama); jenis usaha tidak bertentangan; bukan gudang/koperasi/kantin vs usaha induk; alamat mirip ≥60%; status AKTIF.
-- **Jelas bukan:** nama pengusaha beda, jenis usaha beda, gudang/koperasi/kantin vs usaha induk, atau beda kecamatan tanpa nama pengusaha yang sama persis.
+- **Jelas bukan:** nama pengusaha **tidak sama persis** (termasuk hanya sebagian sama), **desa tidak sama**, jenis usaha beda, atau gudang/koperasi/kantin vs usaha induk. Nama pengusaha dan desa yang sama adalah syarat mutlak; kalau tidak terpenuhi, kandidat tidak dibandingkan di peta.
 - **Wilayah** dibandingkan lewat kode berjenjang (prov → kab → kec → desa), karena kode desa tidak unik antar kecamatan.
 
 ### Review dengan peta (aturan 3)
@@ -85,6 +84,7 @@ Tambahkan kasus baru ke `tests/rules.test.js` setiap kali menemukan keputusan ya
 
 ## Riwayat versi
 
+- **2.6.0** — aturan ketat: kandidat dengan nama pengusaha tidak sama persis atau desa tidak sama langsung dianggap bukan (bila semua kandidat bukan → Unmatch); peta hanya untuk kandidat yang nama pengusaha & desanya sama.
 - **2.5.1** — peta: alamat dibersihkan sebelum dicari di Google (catatan "| subsls : RT 003", RT/RW dibuang, nama provinsi ditambah) supaya tidak jatuh ke peta dunia; tambah pilihan "Wilayah saja".
 - **2.5.0** — panel peta pakai tab: kiri DATA, kanan satu kandidat (tab K1 | K2 | K3, atau tombol 1/2/3), jadi tidak perlu di-scroll; bar bawah jadi satu baris saat panel tampil; tampilan rapat untuk layar pendek.
 - **2.4.3** — alamat: angka RT/RW/nomor rumah disamakan ("RT 04" = "RT 4"), isian kosong SBR "RT 0/RW 0" tidak dihitung.

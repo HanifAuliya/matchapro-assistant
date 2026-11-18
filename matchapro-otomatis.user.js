@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MatchaPro Matching Otomatis
 // @namespace    hanif-bps-hst
-// @version      2.5.1
+// @version      2.6.0
 // @description  Matching manual SBR (SE2026) dengan aturan briefing: yang jelas Match/Unmatch dikerjakan otomatis, yang ragu di-Skip. Badge cek di tiap kandidat, log, ekspor CSV.
 // @match        https://matchapro.web.bps.go.id/matching/kegiatan/*
 // @run-at       document-start
@@ -13,7 +13,7 @@
   if (window.__mpoLoaded) return;
   window.__mpoLoaded = true;
 
-  const APP = { name: "Matching Otomatis", version: "2.5.1", badge: "MP" };
+  const APP = { name: "Matching Otomatis", version: "2.6.0", badge: "MP" };
   const CONF_KEY = "mpo_conf";
   const LOG_KEY = "mpo_log_" + location.pathname;
   const DAY_KEY = "mpo_day_" + location.pathname;
@@ -226,13 +226,13 @@
       notes.push({ lvl: "bad", text: `Kec beda (${cand.nmkec || cand.kdkec})` });
     } else if (!same("kddesa")) {
       f.wil = "desa";
-      notes.push({ lvl: "warn", text: `Desa beda (${cand.nmdesa || cand.kddesa})` });
+      notes.push({ lvl: "bad", text: `Desa beda (${cand.nmdesa || cand.kddesa})` });
     } else {
       f.wil = "same";
       notes.push({ lvl: "ok", text: "Wilayah sama s.d. desa" });
     }
     f.mentionsDesa = f.wil !== "same" && mentionsDesa(tm, cand);
-    if (f.mentionsDesa) notes.push({ lvl: "warn", text: "Alamat menyebut desa yang lain → cek peta" });
+    if (f.mentionsDesa) notes.push({ lvl: "warn", text: "Alamat menyebut desa yang lain (kode desa tetap beda)" });
 
     const a = splitName(tm.nama);
     const b = splitName(cand.nama);
@@ -254,11 +254,12 @@
         if (nameContains(x, y)) f.ownerContain = true;
       }),
     );
+    if (!f.ownerBoth && !f.generic) notes.push({ lvl: "bad", text: "Tidak ada nama pengusaha untuk dibandingkan" });
     if (f.ownerBoth) {
       if (f.ownerSim === 1)
         notes.push(f.ownerWords < 2 ? { lvl: "warn", text: "Nama pengusaha sama (1 kata)" } : { lvl: "ok", text: "Nama pengusaha sama" });
-      else if (f.ownerContain) notes.push({ lvl: "warn", text: "Nama pengusaha sebagian sama" });
-      else if (f.ownerSim > 0) notes.push({ lvl: "warn", text: "Nama pengusaha mirip sebagian" });
+      else if (f.ownerContain) notes.push({ lvl: "bad", text: "Nama pengusaha hanya sebagian sama" });
+      else if (f.ownerSim > 0) notes.push({ lvl: "bad", text: "Nama pengusaha hanya mirip sebagian" });
       else notes.push({ lvl: "bad", text: "Nama pengusaha beda" });
     }
 
@@ -289,9 +290,10 @@
       f.wil === "same" && !f.generic && f.ownerBoth && f.ownerSim === 1 && (f.ownerWords >= 2 || f.sameBiz) &&
       !f.bizDiff && !f.special && f.addrSim >= 60 && f.aktif;
     // Jelas bukan: pengusaha beda / jenis usaha beda / gudang-koperasi-kantin / beda kec & pengusaha tidak sama persis
-    f.hardFail =
-      (f.ownerBoth && f.ownerSim === 0 && !f.ownerContain) || f.bizDiff || f.special ||
-      ((f.wil === "kec" || f.wil === "kab") && f.ownerSim < 1 && !f.mentionsDesa);
+    // Jelas bukan: nama pengusaha tidak sama persis, desa tidak sama, jenis usaha beda, atau gudang/koperasi/kantin.
+    // (Syarat briefing untuk Match: nama pengusaha sama DAN kode wilayah sama sampai desa.)
+    f.sameOwner = f.ownerBoth && f.ownerSim === 1;
+    f.hardFail = !f.sameOwner || f.wil !== "same" || f.bizDiff || f.special;
 
     const nBad = notes.filter((n) => n.lvl === "bad").length;
     const nWarn = notes.filter((n) => n.lvl === "warn").length;
@@ -325,13 +327,8 @@
     const recs = an
       .filter((x) => {
         const f = x.a.f;
-        if (!f.ownerBoth || f.bizDiff || f.special) return false;
-        // desa sama: pengusaha sama persis (1 kata pun) atau salah satu nama memuat yang lain (Zulmahdi ↔ Zulmahdi Anggara)
-        if (f.wil === "same") return f.ownerSim === 1 || f.ownerContain;
-        // kode desa beda tapi alamat menyebut desa kandidat (contoh: alamat data "...DESA PASIR", kandidat di Desa Pasir)
-        if (f.ownerSim === 1 && f.mentionsDesa) return true;
-        // nama pengusaha panjang & unik (≥3 kata) sama persis, masih satu kabupaten
-        return f.ownerSim === 1 && f.ownerWords >= 3 && f.wil !== "kab";
+        // hanya kandidat yang nama pengusaha DAN desanya sama (bukan "jelas bukan") yang dibandingkan di peta
+        return !f.hardFail;
       })
       .sort(
         (x, y) =>
@@ -371,8 +368,8 @@
       const why = [];
       if (an.some((x) => x.a.f.bizDiff)) why.push("jenis usaha beda");
       if (an.some((x) => x.a.f.special)) why.push("gudang/koperasi/kantin");
-      if (an.some((x) => x.a.f.ownerBoth && x.a.f.ownerSim === 0)) why.push("pengusaha beda");
-      if (an.some((x) => x.a.f.wil === "kec" || x.a.f.wil === "kab")) why.push("beda kecamatan");
+      if (an.some((x) => !x.a.f.sameOwner)) why.push("nama pengusaha tidak sama");
+      if (an.some((x) => x.a.f.wil !== "same")) why.push("desa tidak sama");
       return conf.autoUnmatch
         ? { action: "UNMATCH", reason: `Semua ${an.length} kandidat jelas bukan: ${why.join(", ")}` }
         : { action: "SKIP", reason: "Semua kandidat bukan (Unmatch otomatis dimatikan)" };
@@ -382,15 +379,11 @@
     if (recs.length) {
       const t = recs[0].a.f;
       const why =
-        t.wil !== "same"
-          ? t.mentionsDesa
-            ? "pengusaha sama, kode desa beda tapi alamat menyebut desa kandidat"
-            : `pengusaha sama (${t.ownerWords} kata), beda ${t.wil === "kec" ? "kecamatan" : "desa"}`
-          : t.ownerSim < 1
-            ? "desa sama, nama pengusaha sebagian sama"
-            : t.addrSim >= 60
-              ? "pengusaha & desa sama, perlu konfirmasi"
-              : `pengusaha & desa sama, alamat beda (${t.addrSim}%)`;
+        t.addrSim >= 60
+          ? t.ownerWords < 2
+            ? "pengusaha (1 kata) & desa sama, jenis usaha perlu dipastikan"
+            : "pengusaha & desa sama, perlu konfirmasi"
+          : `pengusaha & desa sama, alamat beda (${t.addrSim}%)`;
       return reviewOf(
         recs.length === 1 ? `Aturan 3: ${why} → cek peta` : `${recs.length} kandidat mungkin cocok (${why}) → bandingkan di peta`,
       );
