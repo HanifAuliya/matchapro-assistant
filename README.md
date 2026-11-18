@@ -55,7 +55,12 @@ Briefing meminta kasus "pengusaha sama, alamat sedikit beda" dicek lokasinya dul
 
 1. Pertama kali ditemukan → **Skip** dan diingat.
 2. Saat data itu muncul lagi → script berhenti dan menampilkan **peta Google Maps di halaman**: kiri **DATA**, kanan **K1, K2, …** (kandidat rekomendasi, bisa dibuka-tutup, label sama dipasang di kartu kandidat).
-3. Operator memutuskan: **M** / Enter = Match kandidat terpilih · **U** = Unmatch · **S** = Skip · **G** = kecilkan/tampilkan peta.
+3. Operator memutuskan langsung dari panel peta:
+   - **✓ Match K1 / K2 …** di kandidat yang lokasinya sama → langsung di-Match dengan kandidat itu,
+   - **✗ Unmatch** → tidak ada kandidat yang lokasinya sama,
+   - **⏭ Skip** → belum yakin, kerjakan nanti.
+
+   Keyboard juga bisa (**M** = Match kandidat terpilih, **U**, **S**, **G** = kecilkan/tampilkan peta), tetapi tidak terbaca selama kursor masih di dalam peta Google, jadi tombol di panel lebih aman.
 
 ## Penilaian nama, alamat, dan jenis usaha
 
@@ -80,6 +85,7 @@ Tambahkan kasus baru ke `tests/rules.test.js` setiap kali menemukan keputusan ya
 
 ## Riwayat versi
 
+- **2.4.1** — panel peta: tombol "Pilih ini" diganti "✓ Match K…" yang langsung menjalankan Match; tombol Unmatch dan Skip ditambahkan di panel (sebelumnya script menunggu tanpa tanda setelah kandidat dipilih).
 - **2.4.0** — aturan diperbaiki dari uji coba 45 data dummy (multi-kurung, alamat tanpa spasi/romawi, kelompok produk, nama 1 kata, alamat menyebut desa kandidat).
 - **2.3.0** — panel peta berlabel DATA / K1 / K2, kandidat bisa dibuka-tutup, kasus ≥2 kandidat cocok ikut direview.
 - **2.2.0** — aturan 3: Skip dulu, saat muncul lagi tampil peta kiri-kanan di halaman.

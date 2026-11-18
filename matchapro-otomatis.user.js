@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MatchaPro Matching Otomatis
 // @namespace    hanif-bps-hst
-// @version      2.4.0
+// @version      2.4.1
 // @description  Matching manual SBR (SE2026) dengan aturan briefing: yang jelas Match/Unmatch dikerjakan otomatis, yang ragu di-Skip. Badge cek di tiap kandidat, log, ekspor CSV.
 // @match        https://matchapro.web.bps.go.id/matching/kegiatan/*
 // @run-at       document-start
@@ -13,7 +13,7 @@
   if (window.__mpoLoaded) return;
   window.__mpoLoaded = true;
 
-  const APP = { name: "Matching Otomatis", version: "2.4.0", badge: "MP" };
+  const APP = { name: "Matching Otomatis", version: "2.4.1", badge: "MP" };
   const CONF_KEY = "mpo_conf";
   const LOG_KEY = "mpo_log_" + location.pathname;
   const DAY_KEY = "mpo_day_" + location.pathname;
@@ -666,7 +666,7 @@
         <span class="mp-badge cand">${esc(it.label)}</span>
         <div class="mp-iinfo"><div class="mp-n">${esc(c.nama || "-")}</div><div class="mp-a">${esc(placeQuery(c) || "-")}</div></div>
         <span class="mp-chip">alamat ${it.addrSim}%</span>${it.wil && it.wil !== "same" ? `<span class="mp-chip bad">${it.wil === "desa" ? "desa beda" : "kec beda"}</span>` : ""}${it.part ? `<span class="mp-chip bad">nama sebagian</span>` : ""}${it.aktif ? "" : `<span class="mp-chip bad">tidak aktif</span>`}
-        <button class="mpo-btn sm mp-pick" data-pick="${esc(it.idsbr)}">${sel ? "✓ Dipilih" : "Pilih ini"}</button>
+        <button class="mpo-btn sm go" data-match="${esc(it.idsbr)}" title="Match data ini dengan ${esc(it.label)}">✓ Match ${esc(it.label)}</button>
         <span class="mp-chev">${open ? "▾" : "▸"}</span>
       </div>
       ${open ? `<iframe loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="${embedUrl(c, maps.mode)}"></iframe>` : ""}
@@ -713,10 +713,12 @@
     p.innerHTML = `
       <div class="mp-bar">
         <b>Cek lokasi</b>
-        <span>${items.length > 1 ? `${items.length} kandidat cocok: buka-tutup K1/K2 untuk membandingkan dengan DATA.` : "Bandingkan lokasi DATA (kiri) dengan kandidat (kanan)."} Berdekatan → <b>M</b> Match kandidat yang dipilih · beda → <b>U</b> Unmatch</span>
+        <span>${items.length > 1 ? `${items.length} kandidat: buka-tutup K1/K2 untuk membandingkan dengan DATA. ` : ""}Lokasi sama/berdekatan → klik <b>✓ Match</b> di kandidatnya · semua beda → <b>Unmatch</b> · belum yakin → <b>Skip</b></span>
         <div class="mp-seg"><button data-mode="addr" class="${maps.mode === "addr" ? "on" : ""}">Alamat</button><button data-mode="name" class="${maps.mode === "name" ? "on" : ""}">Nama + alamat</button></div>
         <button class="mpo-btn sm" data-rv="ROUTE">Rute di tab baru</button>
         <button class="mpo-btn sm" data-rv="MAPS">${maps.min ? "▾ Tampilkan peta (G)" : "▴ Kecilkan (G)"}</button>
+        <button class="mpo-btn un" data-rv="UNMATCH" title="Tidak ada kandidat yang lokasinya sama (U)">✗ Unmatch</button>
+        <button class="mpo-btn" data-rv="SKIP" title="Lewati dulu, kerjakan nanti (S)">⏭ Skip</button>
       </div>
       <div class="mp-grid">
         <div class="mp-side">
@@ -734,21 +736,13 @@
     p.querySelectorAll("[data-toggle]").forEach(
       (h) =>
         (h.onclick = (e) => {
-          if (e.target.closest("[data-pick]")) return;
+          if (e.target.closest("[data-match]")) return;
           const id = h.dataset.toggle;
           maps.open.has(id) ? maps.open.delete(id) : maps.open.add(id);
           showMapsPanel();
         }),
     );
-    p.querySelectorAll("[data-pick]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          const card = document.querySelector(`.mp-candidate-card[data-idsbr="${b.dataset.pick}"]`);
-          if (card) $(card).trigger("click");
-          maps.open.add(b.dataset.pick);
-          setTimeout(renderHud, 50);
-        }),
-    );
+    p.querySelectorAll("[data-match]").forEach((b) => (b.onclick = () => reviewMatch(b.dataset.match)));
     labelCards(items);
   }
   function hideMapsPanel(remove) {
@@ -810,15 +804,21 @@
     if (what === "ROUTE") return openMaps(mapsRouteUrl(rv.tm, pick.c));
     if (what === "MAPS_DATA") return openMaps(mapsUrl(rv.tm));
     if (what === "MAPS_CAND") return openMaps(mapsUrl(pick.c));
-    if (what === "MATCH")
-      return rv.resolve({
-        action: "MATCH",
-        idsbr: pick.id,
-        cand: pick.c.nama || "",
-        reason: `Review operator (cek Maps): Match · ${rv.dec.reason}`,
-      });
+    if (what === "MATCH") return reviewMatch(pick.id);
     if (what === "UNMATCH") return rv.resolve({ action: "UNMATCH", reason: "Review operator (cek Maps): lokasi beda → Unmatch" });
     if (what === "SKIP") return rv.resolve({ action: "SKIP", reason: "Review operator: dilewati dulu" });
+  }
+  // Operator memilih kandidat = langsung Match dengan kandidat itu
+  function reviewMatch(idsbr) {
+    const rv = run.review;
+    if (!rv || !idsbr) return;
+    const c = state.byId[idsbr] || (rv.dec.recs || []).map((r) => r.c).find((x) => String(x.idsbr || x.perusahaan_id) === idsbr) || rv.dec.candObj || {};
+    rv.resolve({
+      action: "MATCH",
+      idsbr,
+      cand: c.nama || "",
+      reason: `Review operator (cek Maps): Match · ${rv.dec.reason}`,
+    });
   }
   // Tombol cepat saat review: G = tampilkan/sembunyikan peta, M/Enter = Match kandidat terpilih, U = Unmatch, S = Skip
   document.addEventListener(
@@ -1120,6 +1120,9 @@
       .mpo-maps-panel .mp-bar > span { color:#9aa0c3; font-size:12px; flex:1; min-width:200px; }
       .mpo-maps-panel .mp-bar > span b { color:#eef0ff; }
       .mpo-maps-panel .mpo-btn { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.12); color:#eef0ff; }
+      .mpo-maps-panel .mpo-btn.go { background:#16a34a; border-color:#16a34a; color:#fff; font-weight:700; }
+      .mpo-maps-panel .mpo-btn.un { background:#ea580c; border-color:#ea580c; color:#fff; font-weight:700; }
+      .mpo-maps-panel .mpo-btn.go:hover, .mpo-maps-panel .mpo-btn.un:hover { filter:brightness(1.1); }
       .mpo-maps-panel .mp-grid { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:0; }
       .mpo-maps-panel .mp-side { display:flex; flex-direction:column; min-height:0; background:rgba(255,255,255,.05); border-radius:12px; padding:8px; gap:6px; border-top:3px solid #818cf8; }
       .mpo-maps-panel .mp-cands { display:flex; flex-direction:column; gap:8px; min-height:0; overflow:auto; }
@@ -1353,8 +1356,11 @@
     const spin = run.active ? (run.pause || rv ? "wait" : "") : "idle";
     const title = run.active ? (rv ? "Menunggu keputusanmu · aturan 3" : run.pause ? "Dijeda" : "Matching otomatis berjalan") : "Selesai";
     let review = "";
-    if (rv) {
-      if (document.getElementById("mpo-maps")) showMapsPanel(); // kandidat diganti -> daftar peta ikut menyesuaikan
+    if (rv && mapsPanelOpen()) {
+      showMapsPanel(); // kandidat diganti -> daftar peta ikut menyesuaikan
+      review = `<div class="rv-note">Putuskan di panel peta di atas: <b>✓ Match K…</b> pada kandidat yang lokasinya sama, <b>✗ Unmatch</b>, atau <b>⏭ Skip</b>.</div>`;
+    } else if (rv) {
+      if (document.getElementById("mpo-maps")) showMapsPanel();
       const pick = reviewCand();
       const c = pick.c || {};
       const an = state.analysis[pick.id];
@@ -1363,7 +1369,7 @@
         `<div class="rv-card"><div class="k">${k}</div><div class="n">${esc(o.nama || "-")}</div><div class="a">${esc(o.alamat || "-")}</div><div class="a">${esc([o.nmdesa, o.nmkec].filter(Boolean).join(", "))}</div></div>`;
       review = `
         <div class="rv-grid">${side("Data yang dicocokkan", rv.tm)}${side(`Kandidat · IDSBR ${esc(pick.id)}`, c)}</div>
-        <div class="rv-note">Pengusaha & desa sama, alamat mirip ${addr}%. Lihat peta kiri-kanan: berdekatan → M, beda lokasi → U (briefing aturan 3). Klik kartu lain untuk ganti kandidat; klik di luar peta dulu agar tombol keyboard aktif.</div>
+        <div class="rv-note">Pengusaha & desa sama, alamat mirip ${addr}%. Lihat peta: berdekatan → Match, beda lokasi → Unmatch (briefing aturan 3). Klik kartu lain untuk ganti kandidat.</div>
         <div class="rv-acts">
           <button class="mpo-btn" data-rv="MAPS"><b>G</b>&nbsp;${mapsPanelOpen() ? "Sembunyikan peta" : "Tampilkan peta"}</button>
           <button class="mpo-btn" data-rv="ROUTE">Rute di tab baru</button>

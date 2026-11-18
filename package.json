@@ -1,6 +1,6 @@
 {
   "name": "matchapro-assistant",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "private": true,
   "description": "Userscript Tampermonkey untuk Matching Manual SBR (SE2026) di MatchaPro",
   "scripts": {
