@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MatchaPro Matching Otomatis
 // @namespace    hanif-bps-hst
-// @version      2.5.0
+// @version      2.5.1
 // @description  Matching manual SBR (SE2026) dengan aturan briefing: yang jelas Match/Unmatch dikerjakan otomatis, yang ragu di-Skip. Badge cek di tiap kandidat, log, ekspor CSV.
 // @match        https://matchapro.web.bps.go.id/matching/kegiatan/*
 // @run-at       document-start
@@ -13,7 +13,7 @@
   if (window.__mpoLoaded) return;
   window.__mpoLoaded = true;
 
-  const APP = { name: "Matching Otomatis", version: "2.5.0", badge: "MP" };
+  const APP = { name: "Matching Otomatis", version: "2.5.1", badge: "MP" };
   const CONF_KEY = "mpo_conf";
   const LOG_KEY = "mpo_log_" + location.pathname;
   const DAY_KEY = "mpo_day_" + location.pathname;
@@ -622,7 +622,17 @@
   }
 
   /* ---------- Mode review aturan 3: operator yang cek Maps, script yang mengeksekusi ---------- */
-  const placeQuery = (o) => [o.alamat, o.nmdesa, o.nmkec, o.nmkab].filter(Boolean).join(", ");
+  // Alamat untuk dicari di Google Maps: catatan lapangan ("| subsls : RT 003"), RT/RW, dan isian kosong dibuang,
+  // karena bagian itu membuat Google gagal menemukan lokasi (yang tampil malah peta dunia).
+  function cleanAddr(s) {
+    let t = String(s || "").split("|")[0];
+    t = t.replace(/\bsub\s*-?\s*sls\b.*$/i, " ").replace(/\bsls\s*[:.]?\s*\S*/gi, " ");
+    t = t.replace(/\b(?:RT|RW)\s*[.:]?\s*\d+(?:\s*\/\s*(?:RW\s*[.:]?\s*)?\d+)?/gi, " ");
+    t = t.replace(/\s*,\s*(?=,|$)/g, "").replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ").replace(/^[,\s]+|[,\s]+$/g, "");
+    return t;
+  }
+  const wilQuery = (o) => [o.nmdesa, o.nmkec, o.nmkab, o.nmprov].filter(Boolean).join(", ");
+  const placeQuery = (o) => [cleanAddr(o.alamat), wilQuery(o)].filter(Boolean).join(", ");
   const mapsRouteUrl = (a, b) =>
     "https://www.google.com/maps/dir/?api=1&travelmode=walking&origin=" +
     encodeURIComponent(placeQuery(a)) + "&destination=" + encodeURIComponent(placeQuery(b));
@@ -647,7 +657,9 @@
   const maps = { mode: "addr", min: false, active: "", items: [], key: "" };
   const embedUrl = (o, mode) =>
     "https://www.google.com/maps?output=embed&z=16&q=" +
-    encodeURIComponent(mode === "name" ? [o.nama, placeQuery(o)].filter(Boolean).join(", ") : placeQuery(o));
+    encodeURIComponent(
+      mode === "name" ? [o.nama, placeQuery(o)].filter(Boolean).join(", ") : mode === "wil" ? wilQuery(o) || placeQuery(o) : placeQuery(o),
+    );
   const selectedId = () => {
     const s = document.querySelector(".mp-candidate-card.selected");
     return s ? s.getAttribute("data-idsbr") : "";
@@ -797,7 +809,7 @@
       <div class="mp-bar">
         <b>Cek lokasi</b>
         <span>${items.length > 1 ? `${items.length} kandidat — pindah dengan tab K1/K2 (atau tombol 1/2/3). ` : ""}Lokasi sama/berdekatan → <b>✓ Match</b> · semua beda → <b>Unmatch</b> · belum yakin → <b>Skip</b></span>
-        <div class="mp-seg"><button data-mode="addr" class="${maps.mode === "addr" ? "on" : ""}">Alamat</button><button data-mode="name" class="${maps.mode === "name" ? "on" : ""}">Nama + alamat</button></div>
+        <div class="mp-seg"><button data-mode="addr" class="${maps.mode === "addr" ? "on" : ""}">Alamat</button><button data-mode="name" class="${maps.mode === "name" ? "on" : ""}">Nama + alamat</button><button data-mode="wil" class="${maps.mode === "wil" ? "on" : ""}" title="Pakai ini kalau peta malah menampilkan seluruh dunia / lokasi lain">Wilayah saja</button></div>
         <button class="mpo-btn sm" data-rv="ROUTE">Rute di tab baru</button>
         <button class="mpo-btn sm" data-rv="MAPS">${maps.min ? "▾ Tampilkan peta (G)" : "▴ Kecilkan (G)"}</button>
         <button class="mpo-btn un" data-rv="UNMATCH" title="Tidak ada kandidat yang lokasinya sama (U)">✗ Unmatch</button>
@@ -1052,7 +1064,7 @@
      BADGE DI KARTU KANDIDAT
      ========================================================================= */
   function mapsUrl(o) {
-    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent([o.nama, o.alamat, o.nmdesa, o.nmkec, o.nmkab].filter(Boolean).join(", "));
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent([o.nama, placeQuery(o)].filter(Boolean).join(", "));
   }
   const badge = (n) => `<span class="mpo-b ${n.lvl}">${esc(n.text)}</span>`;
 

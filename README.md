@@ -54,7 +54,7 @@ Empat pertanyaan berurutan; jawaban "ya" pertama menentukan aksi.
 Briefing meminta kasus "pengusaha sama, alamat sedikit beda" dicek lokasinya dulu dan direview manual. Script tidak menebak lokasi:
 
 1. Pertama kali ditemukan → **Skip** dan diingat.
-2. Saat data itu muncul lagi → script berhenti dan menampilkan **peta Google Maps di halaman**: kiri **DATA**, kanan **satu kandidat** dengan tab **K1 | K2 | K3** (pindah dengan klik tab atau tombol **1/2/3**; label sama dipasang di kartu kandidat). Di atas tiap peta ada rincian **Pengusaha · Jenis usaha · Alamat · Wilayah · Status** dengan tanda ✓ sama / ≈ sebagian / ✗ beda, dan kata yang sama dengan DATA diberi stabilo.
+2. Saat data itu muncul lagi → script berhenti dan menampilkan **peta Google Maps di halaman**: kiri **DATA**, kanan **satu kandidat** dengan tab **K1 | K2 | K3** (pindah dengan klik tab atau tombol **1/2/3**; label sama dipasang di kartu kandidat). Pencarian peta bisa diganti: **Alamat** (alamat dibersihkan dari RT/RW dan catatan SLS), **Nama + alamat**, atau **Wilayah saja** kalau peta tetap tidak menemukan lokasi. Di atas tiap peta ada rincian **Pengusaha · Jenis usaha · Alamat · Wilayah · Status** dengan tanda ✓ sama / ≈ sebagian / ✗ beda, dan kata yang sama dengan DATA diberi stabilo.
 3. Operator memutuskan langsung dari panel peta:
    - **✓ Match K1 / K2 …** di kandidat yang lokasinya sama → langsung di-Match dengan kandidat itu,
    - **✗ Unmatch** → tidak ada kandidat yang lokasinya sama,
@@ -85,6 +85,7 @@ Tambahkan kasus baru ke `tests/rules.test.js` setiap kali menemukan keputusan ya
 
 ## Riwayat versi
 
+- **2.5.1** — peta: alamat dibersihkan sebelum dicari di Google (catatan "| subsls : RT 003", RT/RW dibuang, nama provinsi ditambah) supaya tidak jatuh ke peta dunia; tambah pilihan "Wilayah saja".
 - **2.5.0** — panel peta pakai tab: kiri DATA, kanan satu kandidat (tab K1 | K2 | K3, atau tombol 1/2/3), jadi tidak perlu di-scroll; bar bawah jadi satu baris saat panel tampil; tampilan rapat untuk layar pendek.
 - **2.4.3** — alamat: angka RT/RW/nomor rumah disamakan ("RT 04" = "RT 4"), isian kosong SBR "RT 0/RW 0" tidak dihitung.
 - **2.4.2** — panel peta menampilkan rincian per kandidat (pengusaha, jenis usaha, alamat, wilayah, status) dengan tanda sama/beda dan stabilo pada kata yang sama dengan DATA.
