@@ -19,6 +19,9 @@ const cases = [
   ["B4 karet vs gula", W({ nama: "PERKEBUNAN KARET (ASMAR EFENDI SIMATUPANG)", alamat: "JALAN SIMANGAMBAT" }), [C({ nama: "Pembuat Gula Merah Asmar Simatupang <Asmar Efendi Simatupang>", alamat: "Lingkungan Purba Tua Simangambat" })], "UNMATCH"],
   ["B5 kantin", W({ nama: "KANTIN MI AL WASHLIYAH", alamat: "KP BOJONG RANGKONG" }), [C({ nama: "MI AL WASHLIYAH", alamat: "Jl Bojong Rangkong" })], "UNMATCH"],
   ["B5 gudang", W({ nama: "GUDANG SUMBER KARYA SENTOSA, PT", alamat: "KOMPLEK RUKO CEMPAKA MAS" }), [C({ nama: "SUMBER KARYA SENTOSA, PT", alamat: "RUKO MEGA GROSIR CEMPAKA MAS" })], "UNMATCH"],
+  ["B2 alamat lengkap RT/RW + nomor", W({ nama: "TOKO SEMBAKO (SITI AMINAH)", alamat: "JL MERDEKA RT 04 RW 02 NO 15" }), [C({ nama: "SITI AMINAH", alamat: "Jl. Merdeka RT 4/RW 2 No.15" })], "MATCH"],
+  ["B2 RT/RW kosong SBR tidak dihitung", W({ nama: "WARUNG (SITI AMINAH)", alamat: "JL MERDEKA NO 15" }), [C({ nama: "Warung <Siti Aminah>", alamat: "Jl Merdeka No 15, RT 0/RW 0" })], "MATCH"],
+  ["B3 nomor rumah beda", W({ nama: "TOKO SEMBAKO (SITI AMINAH)", alamat: "JL MERDEKA NO 15" }), [C({ nama: "SITI AMINAH", alamat: "JL MAWAR NO 3" })], "REVIEW"],
   // ---- dummy: harusnya Match / review ----
   ["D wantina (janjimaria)", W({ nama: "UPT PEDAGANG KELILING (WANTINA MANURUNG)", alamat: "DUSUN 3 JANJIMARIA", nmdesa: "PARHABINSARAN JANJI MATOGU" }), [C({ nama: "Pedagang keliling <Wantina manurung>", alamat: "Janji maria", nmdesa: "PARHABINSARAN JANJI MATOGU" }), C({ nama: "Pedagang keliling <Riama rajagukguk>", alamat: "Keliling" })], "MATCH"],
   ["D cut erawati (2 kurung)", W({ nama: "USAHA WARUNG MIE (CUT ERAWATI)", alamat: "JALAN LAPANGAN BOLA KAKI MATA IE", nmdesa: "MATA IE" }), [C({ nama: "USAHA MIE SO ( CUT ERA ) <CUT ERAWATI>", alamat: "DUSUN I MATAIE", nmdesa: "MATA IE" })], "REVIEW"],

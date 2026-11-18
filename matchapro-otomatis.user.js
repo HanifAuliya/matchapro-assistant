@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MatchaPro Matching Otomatis
 // @namespace    hanif-bps-hst
-// @version      2.4.2
+// @version      2.4.3
 // @description  Matching manual SBR (SE2026) dengan aturan briefing: yang jelas Match/Unmatch dikerjakan otomatis, yang ragu di-Skip. Badge cek di tiap kandidat, log, ekspor CSV.
 // @match        https://matchapro.web.bps.go.id/matching/kegiatan/*
 // @run-at       document-start
@@ -13,7 +13,7 @@
   if (window.__mpoLoaded) return;
   window.__mpoLoaded = true;
 
-  const APP = { name: "Matching Otomatis", version: "2.4.2", badge: "MP" };
+  const APP = { name: "Matching Otomatis", version: "2.4.3", badge: "MP" };
   const CONF_KEY = "mpo_conf";
   const LOG_KEY = "mpo_log_" + location.pathname;
   const DAY_KEY = "mpo_day_" + location.pathname;
@@ -179,8 +179,17 @@
 
   // Alamat: angka romawi -> angka, nama desa/kec/kab dibuang (sudah dibandingkan lewat kode wilayah)
   const ROMAN = { i: "1", ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10", xi: "11", xii: "12" };
+  // Angka: "04" = "4" (RT/RW/nomor rumah), "0" dibuang (isian kosong SBR "RT 0/RW 0")
+  const numTok = (t) => (/^\d+$/.test(t) ? String(Number(t)) : t);
   const addrRaw = (s) =>
-    [...new Set(norm(s).split(" ").map((t) => ROMAN[t] || t).filter((t) => t && !STOP.has(t) && (t.length > 1 || /\d/.test(t))))];
+    [
+      ...new Set(
+        norm(s)
+          .split(" ")
+          .map((t) => numTok(ROMAN[t] || t))
+          .filter((t) => t && t !== "0" && !STOP.has(t) && (t.length > 1 || /\d/.test(t))),
+      ),
+    ];
   function addrSimilarity(tm, cand) {
     const drop = new Set([tm.nmdesa, tm.nmkec, tm.nmkab, cand.nmdesa, cand.nmkec, cand.nmkab].flatMap((x) => addrRaw(x)));
     const A = addrRaw(tm.alamat).filter((t) => !drop.has(t));

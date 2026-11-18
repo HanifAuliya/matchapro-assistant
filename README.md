@@ -65,7 +65,7 @@ Briefing meminta kasus "pengusaha sama, alamat sedikit beda" dicek lokasinya dul
 ## Penilaian nama, alamat, dan jenis usaha
 
 - **Nama pengusaha** diambil dari `< >` terakhir (format SBR), lalu `( )`; isi kurung lain jadi nama alternatif. Tanpa kurung, kata selain kata jenis usaha dianggap nama pengusaha. Spasi diabaikan (`Nur Baiti` = `Nurbaiti`).
-- **Alamat:** nama desa/kec/kab dibuang (sudah dibandingkan lewat kode), angka romawi disamakan (`IV` = `4`), dibandingkan juga tanpa spasi (`Janjimaria` = `Janji maria`).
+- **Alamat:** nama desa/kec/kab dibuang (sudah dibandingkan lewat kode), angka romawi disamakan (`IV` = `4`), angka RT/RW/nomor rumah disamakan (`RT 04` = `RT 4`), isian kosong `RT 0/RW 0` diabaikan, dibandingkan juga tanpa spasi (`Janjimaria` = `Janji maria`).
 - **Jenis usaha:** kata peran (pedagang, jualan, warung, UTP, perkebunan, …) diabaikan; produk dibandingkan per kelompok (`kepiting ≈ ikan`, `kupi ≈ kopi`, `ulos ≈ tenun`).
 
 Daftar kata ada di bagian atas script: `ROLE_WORDS`, `PRODUCT_GROUPS`, `GENERIC_WORDS`. Kata usaha yang terbaca sebagai nama orang cukup ditambahkan ke daftar itu.
@@ -77,7 +77,7 @@ Script tidak memanggil server sendiri. Ia membaca respons yang sudah diminta hal
 ## Tes
 
 ```bash
-node tests/rules.test.js      # 24 kasus: 5 contoh briefing + 19 kasus dari uji coba data dummy
+node tests/rules.test.js      # 27 kasus: contoh briefing + kasus RT/RW + 19 kasus dari uji coba data dummy
 npm install && npm test       # termasuk simulasi satu putaran penuh (butuh jsdom)
 ```
 
@@ -85,6 +85,7 @@ Tambahkan kasus baru ke `tests/rules.test.js` setiap kali menemukan keputusan ya
 
 ## Riwayat versi
 
+- **2.4.3** — alamat: angka RT/RW/nomor rumah disamakan ("RT 04" = "RT 4"), isian kosong SBR "RT 0/RW 0" tidak dihitung.
 - **2.4.2** — panel peta menampilkan rincian per kandidat (pengusaha, jenis usaha, alamat, wilayah, status) dengan tanda sama/beda dan stabilo pada kata yang sama dengan DATA.
 - **2.4.1** — panel peta: tombol "Pilih ini" diganti "✓ Match K…" yang langsung menjalankan Match; tombol Unmatch dan Skip ditambahkan di panel (sebelumnya script menunggu tanpa tanda setelah kandidat dipilih).
 - **2.4.0** — aturan diperbaiki dari uji coba 45 data dummy (multi-kurung, alamat tanpa spasi/romawi, kelompok produk, nama 1 kata, alamat menyebut desa kandidat).
