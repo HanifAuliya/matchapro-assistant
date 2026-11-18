@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MatchaPro Matching Otomatis
 // @namespace    hanif-bps-hst
-// @version      2.6.0
+// @version      2.6.1
 // @description  Matching manual SBR (SE2026) dengan aturan briefing: yang jelas Match/Unmatch dikerjakan otomatis, yang ragu di-Skip. Badge cek di tiap kandidat, log, ekspor CSV.
 // @match        https://matchapro.web.bps.go.id/matching/kegiatan/*
 // @run-at       document-start
@@ -13,7 +13,7 @@
   if (window.__mpoLoaded) return;
   window.__mpoLoaded = true;
 
-  const APP = { name: "Matching Otomatis", version: "2.6.0", badge: "MP" };
+  const APP = { name: "Matching Otomatis", version: "2.6.1", badge: "MP" };
   const CONF_KEY = "mpo_conf";
   const LOG_KEY = "mpo_log_" + location.pathname;
   const DAY_KEY = "mpo_day_" + location.pathname;
@@ -24,6 +24,7 @@
     speed: 1, // indeks SPEEDS
     limit: 100, // maksimal data per sekali jalan
     reviewRule3: true, // aturan 3 (perlu cek Maps): berhenti & tanya operator, bukan langsung Skip
+    reviewNow: true, // peta langsung muncul saat pertama ketemu (tanpa Skip dulu) -> Skip jauh berkurang
   };
   const SPEEDS = [
     { name: "Normal", gap: [4000, 7000] },
@@ -999,12 +1000,12 @@
           endMsg = "Data yang sudah di-Skip muncul lagi: sisanya yang ragu, kerjakan manual";
           break;
         }
-        if (isR3 && !r3Seen(tid)) {
-          // Aturan 3, pertama kali ketemu: Skip dulu, diingat. Saat muncul lagi baru dibuka dengan peta.
+        if (isR3 && !conf.reviewNow && !r3Seen(tid)) {
+          // Mode lama: aturan 3 pertama kali ketemu di-Skip dulu, saat muncul lagi baru dibuka dengan peta.
           markR3(tid, true);
           dec = { ...dec, reason: `${dec.reason} · di-Skip dulu, dibuka dengan peta saat muncul lagi` };
         } else if (isR3) {
-          // Aturan 3, sudah pernah di-Skip: tampilkan peta kiri-kanan, operator yang memutuskan
+          // Aturan 3: tampilkan peta kiri-kanan sekarang juga, operator yang memutuskan
           hudLog(`Review aturan 3 · ${tm.nama}`);
           run.reviewed.add(tid);
           const pick = await askOperator(tm, dec);
@@ -1092,7 +1093,7 @@
         : p.owner.length
           ? badge({ lvl: p.owner.length >= 2 ? "ok" : "warn", text: "Pengusaha: " + p.owner.join(" ") })
           : "";
-      html += `<span class="mpo-v ${dec.action === "MATCH" ? "ok" : dec.action === "UNMATCH" ? "bad" : "warn"}" title="${esc(dec.reason)}">Script: ${dec.rule3 && loadConf().reviewRule3 ? (r3Seen(state.toMatch.id_table) ? "Review dengan peta" : "Skip dulu (aturan 3)") : ACT[dec.action].label}</span>`;
+      html += `<span class="mpo-v ${dec.action === "MATCH" ? "ok" : dec.action === "UNMATCH" ? "bad" : "warn"}" title="${esc(dec.reason)}">Script: ${dec.rule3 && loadConf().reviewRule3 ? (loadConf().reviewNow || r3Seen(state.toMatch.id_table) ? "Review dengan peta" : "Skip dulu (aturan 3)") : ACT[dec.action].label}</span>`;
       html += `<a class="mpo-maps" style="margin-left:0" target="_blank" rel="noopener" href="${mapsUrl(state.toMatch)}">📍 Maps</a>`;
       div.innerHTML = html;
       alamatEl.parentElement.appendChild(div);
@@ -1392,7 +1393,7 @@
         <div class="mpo-hint" id="mpo-evalout" style="margin-top:10px">${
           dec
             ? dec.rule3 && conf.reviewRule3
-              ? `Data sekarang: <b>${esc(state.toMatch.nama)}</b> → script akan <b style="color:#d97706">${r3Seen(state.toMatch.id_table) ? "berhenti & menampilkan peta kiri-kanan" : "Skip dulu (muncul lagi → peta)"}</b>, kandidat <b>${esc(dec.cand)}</b><br>${esc(dec.reason)}`
+              ? `Data sekarang: <b>${esc(state.toMatch.nama)}</b> → script akan <b style="color:#d97706">${conf.reviewNow || r3Seen(state.toMatch.id_table) ? "berhenti & menampilkan peta kiri-kanan" : "Skip dulu (muncul lagi → peta)"}</b>, kandidat <b>${esc(dec.cand)}</b><br>${esc(dec.reason)}`
               : `Data sekarang: <b>${esc(state.toMatch.nama)}</b> → script akan <b style="color:${ACT[dec.action].color}">${ACT[dec.action].label}</b>${dec.action === "MATCH" && dec.cand ? ` dengan <b>${esc(dec.cand)}</b>` : ""}<br>${esc(dec.reason)}`
             : "Data belum terbaca. Tekan F5 sekali kalau label di kartu kandidat juga belum muncul."
         }</div>
@@ -1400,12 +1401,14 @@
       <div class="mpo-card">
         <div class="mpo-sec">② Aturan & kecepatan</div>
         <label class="mpo-tog"><input type="checkbox" id="mpo-am" ${conf.autoMatch ? "checked" : ""}><span class="sw"></span>
-          <span>Match otomatis yang jelas<small>Tepat 1 kandidat: wilayah sama s.d. desa, nama pengusaha sama persis (≥2 kata), alamat mirip ≥60%, jenis usaha tidak bertentangan, AKTIF.</small></span></label>
+          <span>Match otomatis yang jelas<small>Tepat 1 kandidat: desa sama, nama pengusaha sama persis (≥2 kata, atau 1 kata bila jenis usaha sejenis), alamat mirip ≥60%, jenis usaha tidak bertentangan, AKTIF.</small></span></label>
         <label class="mpo-tog"><input type="checkbox" id="mpo-au" ${conf.autoUnmatch ? "checked" : ""}><span class="sw"></span>
-          <span>Unmatch otomatis sesuai briefing<small>Nama generik tanpa pengusaha (aturan 1), atau semua kandidat jelas bukan: pengusaha beda, jenis usaha beda (aturan 4), gudang/koperasi/kantin (aturan 5), beda kecamatan.</small></span></label>
+          <span>Unmatch otomatis sesuai briefing<small>Nama generik tanpa pengusaha (aturan 1), atau semua kandidat jelas bukan: desa tidak sama, nama pengusaha tidak sama persis, jenis usaha beda (aturan 4), gudang/koperasi/kantin (aturan 5).</small></span></label>
         <label class="mpo-tog"><input type="checkbox" id="mpo-r3" ${conf.reviewRule3 ? "checked" : ""}><span class="sw"></span>
-          <span>Review aturan 3 dengan peta kiri-kanan<small>Pengusaha & desa sama tapi alamat beda: pertama kali di-Skip dulu. Saat data itu muncul lagi, script berhenti dan menampilkan peta data (kiri) dan kandidat (kanan); kamu putuskan Match (M) / Unmatch (U) / Skip (S). Mati = selalu Skip.</small></span></label>
-        <div class="mpo-hint" style="margin:4px 0 12px">Selain itu → <b>Skip</b> (kerjakan manual nanti). Kalau data yang sudah di-Skip muncul lagi, script berhenti sendiri.</div>
+          <span>Review aturan 3 dengan peta kiri-kanan<small>Pengusaha & desa sama tapi alamat beda (atau lebih dari 1 kandidat): script berhenti dan menampilkan peta data (kiri) dan kandidat (kanan); kamu putuskan Match / Unmatch / Skip. Mati = selalu Skip.</small></span></label>
+        <label class="mpo-tog"><input type="checkbox" id="mpo-rn" ${conf.reviewNow ? "checked" : ""}><span class="sw"></span>
+          <span>Peta langsung, tanpa Skip dulu<small>Nyala = peta muncul saat data pertama kali ketemu (Skip jauh berkurang). Mati = cara lama: di-Skip dulu, peta muncul saat data itu datang lagi.</small></span></label>
+        <div class="mpo-hint" style="margin:4px 0 12px"><b>Skip</b> hanya terjadi kalau kamu memilih Skip di panel peta, atau saklar di atas dimatikan. Kalau data yang sudah di-Skip muncul lagi, script berhenti sendiri.</div>
         <div class="mpo-row">
           <span class="mpo-hint">Kecepatan</span>
           <div class="mpo-seg" id="mpo-speed">${SPEEDS.map((s, i) => `<button data-i="${i}" class="${conf.speed === i ? "on" : ""}">${s.name}</button>`).join("")}</div>
@@ -1446,6 +1449,7 @@
       renderSheetBody();
     };
     body.querySelector("#mpo-am").onchange = (e) => saveConf({ ...loadConf(), autoMatch: e.target.checked }) || renderSheetBody();
+    body.querySelector("#mpo-rn").onchange = (e) => saveConf({ ...loadConf(), reviewNow: e.target.checked }) || renderSheetBody();
     body.querySelector("#mpo-r3").onchange = (e) => saveConf({ ...loadConf(), reviewRule3: e.target.checked }) || renderSheetBody();
     body.querySelector("#mpo-au").onchange = (e) => saveConf({ ...loadConf(), autoUnmatch: e.target.checked }) || renderSheetBody();
     body.querySelectorAll("#mpo-speed button").forEach((b) => (b.onclick = () => saveConf({ ...loadConf(), speed: Number(b.dataset.i) }) || renderSheetBody()));
