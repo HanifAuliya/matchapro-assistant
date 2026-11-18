@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MatchaPro Matching Otomatis
 // @namespace    hanif-bps-hst
-// @version      2.4.3
+// @version      2.5.0
 // @description  Matching manual SBR (SE2026) dengan aturan briefing: yang jelas Match/Unmatch dikerjakan otomatis, yang ragu di-Skip. Badge cek di tiap kandidat, log, ekspor CSV.
 // @match        https://matchapro.web.bps.go.id/matching/kegiatan/*
 // @run-at       document-start
@@ -13,7 +13,7 @@
   if (window.__mpoLoaded) return;
   window.__mpoLoaded = true;
 
-  const APP = { name: "Matching Otomatis", version: "2.4.3", badge: "MP" };
+  const APP = { name: "Matching Otomatis", version: "2.5.0", badge: "MP" };
   const CONF_KEY = "mpo_conf";
   const LOG_KEY = "mpo_log_" + location.pathname;
   const DAY_KEY = "mpo_day_" + location.pathname;
@@ -644,7 +644,7 @@
      Kiri  : DATA = usaha yang sedang dicocokkan (selalu tampil)
      Kanan : K1, K2, ... = kandidat rekomendasi, tiap kandidat bisa dibuka/tutup petanya
      Label K1/K2 yang sama dipasang di kartu kandidat halaman supaya peta ↔ kartu mudah dicocokkan */
-  const maps = { mode: "addr", min: false, open: new Set(), items: [], key: "" };
+  const maps = { mode: "addr", min: false, active: "", items: [], key: "" };
   const embedUrl = (o, mode) =>
     "https://www.google.com/maps?output=embed&z=16&q=" +
     encodeURIComponent(mode === "name" ? [o.nama, placeQuery(o)].filter(Boolean).join(", ") : placeQuery(o));
@@ -695,6 +695,7 @@
         <div class="k">Jenis usaha</div><div class="v">${esc(biz)}</div>
         <div class="k">Alamat</div><div class="v">${esc(o.alamat || "—")}</div>
         <div class="k">Wilayah</div><div class="v">${esc(wil || "—")} <span class="mp-dim">${esc(kode)}</span></div>
+        <div class="k id">ID data</div><div class="v id"><span class="mp-dim">${esc(o.id_table || "—")}</span></div>
       </div>`;
     }
     const an = analyze(o, tm);
@@ -734,21 +735,6 @@
     </div>`;
   }
 
-  function mapsItemHtml(it) {
-    const open = maps.open.has(it.idsbr);
-    const sel = selectedId() === it.idsbr;
-    const c = it.c || {};
-    return `<div class="mp-item ${open ? "open" : ""} ${sel ? "sel" : ""}" data-id="${esc(it.idsbr)}">
-      <div class="mp-ihead" data-toggle="${esc(it.idsbr)}">
-        <span class="mp-badge cand">${esc(it.label)}</span>
-        <div class="mp-iinfo"><div class="mp-n">${esc(c.nama || "-")}</div></div>
-        <button class="mpo-btn sm go" data-match="${esc(it.idsbr)}" title="Match data ini dengan ${esc(it.label)}">✓ Match ${esc(it.label)}</button>
-        <span class="mp-chev" title="Buka/tutup peta">${open ? "▾ peta" : "▸ peta"}</span>
-      </div>
-      ${run.review ? factsHtml(c, run.review.tm, false) : ""}
-      ${open ? `<iframe loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="${embedUrl(c, maps.mode)}"></iframe>` : ""}
-    </div>`;
-  }
   function labelCards(items) {
     document.querySelectorAll(".mpo-klabel").forEach((x) => x.remove());
     (items || []).forEach((it) => {
@@ -758,7 +744,19 @@
     const tmName = document.getElementById("to_match_nama_display");
     if (tmName && items) tmName.insertAdjacentHTML("afterbegin", `<span class="mpo-klabel data">DATA</span>`);
   }
-  // Bangun ulang panel hanya kalau isinya berubah (supaya peta tidak dimuat ulang terus-menerus)
+  // Tanda ringkas di tab kandidat: ✓ kuat · ≈ perlu dicek · ✗ banyak beda
+  const tabMark = (c, tm) => {
+    const v = analyze(c, tm).verdict.lvl;
+    return `<span class="mp-tm ${v}">${v === "ok" ? "✓" : v === "warn" ? "≈" : "✗"}</span>`;
+  };
+  // Pakai ulang iframe yang src-nya sama supaya peta tidak dimuat ulang (dan posisi gesernya tidak hilang)
+  function placeIframe(p, slotSel, attr, src, old) {
+    const slot = p.querySelector(slotSel);
+    if (!slot) return;
+    if (old && old.getAttribute("src") === src) slot.replaceWith(old);
+    else slot.outerHTML = `<iframe ${attr}="1" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="${src}"></iframe>`;
+  }
+  // Panel peta: kiri DATA, kanan SATU kandidat dengan tab K1 | K2 | ... (tidak perlu di-scroll)
   function showMapsPanel(force) {
     const rv = run.review;
     if (!rv) return;
@@ -766,13 +764,15 @@
     const items = mapsItems();
     if (!maps.items.length || maps.forId !== rv.tm.id_table) {
       maps.forId = rv.tm.id_table;
-      maps.open = new Set(items.slice(0, 2).map((it) => it.idsbr)); // 2 rekomendasi teratas langsung terbuka
+      maps.active = items.length ? items[0].idsbr : "";
       maps.min = false;
     }
     const sel = selectedId();
-    if (sel && !maps.open.has(sel) && !items.slice(0, 2).some((it) => it.idsbr === sel)) maps.open.add(sel);
+    if (sel && items.some((it) => it.idsbr === sel)) maps.active = sel; // kartu di halaman diklik -> tab ikut
+    if (!items.some((it) => it.idsbr === maps.active)) maps.active = items.length ? items[0].idsbr : "";
     maps.items = items;
-    const key = [rv.tm.id_table, maps.mode, maps.min, sel, [...maps.open].join(","), items.map((i) => i.idsbr).join(",")].join("|");
+    const act = items.find((it) => it.idsbr === maps.active) || items[0];
+    const key = [rv.tm.id_table, maps.mode, maps.min, maps.active, items.map((i) => i.idsbr).join(",")].join("|");
     let p = document.getElementById("mpo-maps");
     if (p && p.dataset.key === key && !force) return;
     if (!p) {
@@ -784,13 +784,19 @@
     p.dataset.key = key;
     p.classList.toggle("min", maps.min);
     const tm = rv.tm;
-    // Peta DATA tidak dibangun ulang kalau hanya kandidat yang berubah
     const oldData = p.querySelector("iframe[data-data]");
-    const dataSrc = embedUrl(tm, maps.mode);
+    const oldCand = p.querySelector("iframe[data-cand]");
+    const c = (act && act.c) || {};
+    const tabs = items
+      .map(
+        (it, i) => `<button class="mp-tab ${it.idsbr === maps.active ? "on" : ""}" data-tab="${esc(it.idsbr)}" title="${esc((it.c || {}).nama || "")} (tombol ${i + 1})">
+          <span class="mp-badge cand">${esc(it.label)}</span><span class="mp-tn">${esc((it.c || {}).nama || "-")}</span>${tabMark(it.c || {}, tm)}</button>`,
+      )
+      .join("");
     p.innerHTML = `
       <div class="mp-bar">
         <b>Cek lokasi</b>
-        <span>${items.length > 1 ? `${items.length} kandidat: buka-tutup K1/K2 untuk membandingkan dengan DATA. ` : ""}Lokasi sama/berdekatan → klik <b>✓ Match</b> di kandidatnya · semua beda → <b>Unmatch</b> · belum yakin → <b>Skip</b></span>
+        <span>${items.length > 1 ? `${items.length} kandidat — pindah dengan tab K1/K2 (atau tombol 1/2/3). ` : ""}Lokasi sama/berdekatan → <b>✓ Match</b> · semua beda → <b>Unmatch</b> · belum yakin → <b>Skip</b></span>
         <div class="mp-seg"><button data-mode="addr" class="${maps.mode === "addr" ? "on" : ""}">Alamat</button><button data-mode="name" class="${maps.mode === "name" ? "on" : ""}">Nama + alamat</button></div>
         <button class="mpo-btn sm" data-rv="ROUTE">Rute di tab baru</button>
         <button class="mpo-btn sm" data-rv="MAPS">${maps.min ? "▾ Tampilkan peta (G)" : "▴ Kecilkan (G)"}</button>
@@ -798,30 +804,40 @@
         <button class="mpo-btn" data-rv="SKIP" title="Lewati dulu, kerjakan nanti (S)">⏭ Skip</button>
       </div>
       <div class="mp-grid">
-        <div class="mp-side">
-          <div class="mp-ihead static"><span class="mp-badge data">DATA</span>
-            <div class="mp-iinfo"><div class="mp-n">${esc(tm.nama || "-")}</div></div></div>
+        <div class="mp-side data">
+          <div class="mp-tabs"><span class="mp-tab on static"><span class="mp-badge data">DATA</span><span class="mp-tn">yang dicocokkan</span></span></div>
+          <div class="mp-ihead static"><div class="mp-iinfo"><div class="mp-n">${esc(tm.nama || "-")}</div></div></div>
           ${factsHtml(tm, tm, true)}
           <div class="mp-data-slot"></div>
         </div>
-        <div class="mp-cands">${items.map(mapsItemHtml).join("")}</div>
+        <div class="mp-side cand">
+          <div class="mp-tabs">${tabs}</div>
+          ${
+            act
+              ? `<div class="mp-ihead static"><div class="mp-iinfo"><div class="mp-n">${esc(c.nama || "-")}</div></div>
+                   <button class="mpo-btn sm go" data-match="${esc(act.idsbr)}" title="Match data ini dengan ${esc(act.label)} (M)">✓ Match ${esc(act.label)}</button></div>
+                 ${factsHtml(c, tm, false)}
+                 <div class="mp-cand-slot"></div>`
+              : `<div class="mp-empty">Tidak ada kandidat rekomendasi.</div>`
+          }
+        </div>
       </div>`;
-    const slot = p.querySelector(".mp-data-slot");
-    if (oldData && oldData.getAttribute("src") === dataSrc) slot.replaceWith(oldData);
-    else slot.outerHTML = `<iframe data-data="1" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="${dataSrc}"></iframe>`;
+    placeIframe(p, ".mp-data-slot", "data-data", embedUrl(tm, maps.mode), oldData);
+    if (act) placeIframe(p, ".mp-cand-slot", "data-cand", embedUrl(c, maps.mode), oldCand);
     p.querySelectorAll("[data-rv]").forEach((b) => (b.onclick = () => reviewChoose(b.dataset.rv)));
     p.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => ((maps.mode = b.dataset.mode), showMapsPanel())));
-    p.querySelectorAll("[data-toggle]").forEach(
-      (h) =>
-        (h.onclick = (e) => {
-          if (e.target.closest("[data-match]")) return;
-          const id = h.dataset.toggle;
-          maps.open.has(id) ? maps.open.delete(id) : maps.open.add(id);
-          showMapsPanel();
-        }),
-    );
+    p.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => switchTab(b.dataset.tab)));
     p.querySelectorAll("[data-match]").forEach((b) => (b.onclick = () => reviewMatch(b.dataset.match)));
     labelCards(items);
+  }
+  // Ganti tab = pilih kartu kandidat yang sama di halaman (jadi M / Match mengarah ke kandidat itu)
+  function switchTab(idsbr) {
+    if (!idsbr) return;
+    maps.active = idsbr;
+    const card = document.querySelector(`.mp-candidate-card[data-idsbr="${idsbr}"]`);
+    if (card) $(card).trigger("click");
+    showMapsPanel();
+    renderHud();
   }
   function hideMapsPanel(remove) {
     const p = document.getElementById("mpo-maps");
@@ -907,6 +923,15 @@
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
       if (window.Swal && Swal.isVisible()) return;
       const k = String(e.key || "").toLowerCase();
+      if (/^[1-9]$/.test(k) && maps.items.length > 1) {
+        const it = maps.items[Number(k) - 1];
+        if (it) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          switchTab(it.idsbr);
+        }
+        return;
+      }
       const map = { g: "MAPS", m: "MATCH", enter: "MATCH", u: "UNMATCH", s: "SKIP" };
       if (!map[k]) return; // ↑↓ tetap untuk pindah kandidat
       e.preventDefault();
@@ -1191,7 +1216,7 @@
       .mpo-hud .rv-acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; align-items:center; }
       .mpo-hud .chips { display:flex; gap:6px; margin-left:auto; }
       /* panel peta: DATA kiri, kandidat K1/K2 kanan */
-      .mpo-maps-panel { position:fixed; left:50%; top:64px; transform:translateX(-50%); z-index:1000001; width:min(1280px,96vw); height:calc(100vh - 64px - 236px); min-height:320px; background:rgba(17,19,36,.94); backdrop-filter:blur(12px); color:#eef0ff; border-radius:16px; padding:10px; box-shadow:0 20px 50px rgba(10,10,30,.45); display:flex; flex-direction:column; gap:8px; font-size:13px; }
+      .mpo-maps-panel { position:fixed; left:50%; top:64px; transform:translateX(-50%); z-index:1000001; width:min(1280px,96vw); height:calc(100vh - 64px - 92px); min-height:300px; background:rgba(17,19,36,.94); backdrop-filter:blur(12px); color:#eef0ff; border-radius:16px; padding:10px; box-shadow:0 20px 50px rgba(10,10,30,.45); display:flex; flex-direction:column; gap:8px; font-size:13px; }
       .mpo-maps-panel.min { height:auto; min-height:0; }
       .mpo-maps-panel.min .mp-grid { display:none; }
       .mpo-maps-panel .mp-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -1202,7 +1227,27 @@
       .mpo-maps-panel .mpo-btn.un { background:#ea580c; border-color:#ea580c; color:#fff; font-weight:700; }
       .mpo-maps-panel .mpo-btn.go:hover, .mpo-maps-panel .mpo-btn.un:hover { filter:brightness(1.1); }
       .mpo-maps-panel .mp-grid { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:0; }
-      .mpo-maps-panel .mp-side { display:flex; flex-direction:column; min-height:0; background:rgba(255,255,255,.05); border-radius:12px; padding:8px; gap:6px; border-top:3px solid #818cf8; }
+      .mpo-maps-panel .mp-side { display:flex; flex-direction:column; min-height:0; min-width:0; background:rgba(255,255,255,.05); border-radius:12px; padding:8px; gap:6px; border-top:3px solid #818cf8; }
+      .mpo-maps-panel .mp-side.cand { border-top-color:#22c55e; }
+      .mpo-maps-panel .mp-side iframe { flex:1 1 auto; min-height:120px; }
+      .mpo-maps-panel .mp-grid, .mpo-maps-panel .mp-side { overflow:hidden; }
+      @media (max-height: 760px) {
+        .mpo-maps-panel { top:56px; height:calc(100vh - 56px - 84px); padding:8px; gap:6px; }
+        .mpo-maps-panel .mp-bar > span { display:none; }
+        .mpo-maps-panel .mp-facts { font-size:11.5px; line-height:1.3; padding:4px 8px; gap:1px 8px; }
+        .mpo-maps-panel .mp-side { padding:6px; gap:4px; }
+      }
+      /* saat panel peta tampil, bar bawah cukup satu baris */
+      .mpo-hud.under-maps { width:auto; padding:9px 12px; }
+      .mpo-hud.under-maps > :not(.top) { display:none; }
+      .mpo-maps-panel .mp-tabs { display:flex; gap:6px; flex:none; overflow-x:auto; scrollbar-width:thin; padding-bottom:2px; }
+      .mpo-maps-panel .mp-tab { display:flex; align-items:center; gap:6px; max-width:260px; flex:0 1 auto; min-width:0; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#c7cbf0; border-radius:9px; padding:4px 8px; font:inherit; font-size:12px; cursor:pointer; }
+      .mpo-maps-panel .mp-tab.on { background:rgba(34,197,94,.16); border-color:#22c55e; color:#fff; }
+      .mpo-maps-panel .mp-tab.static { cursor:default; background:rgba(129,140,248,.16); border-color:#818cf8; }
+      .mpo-maps-panel .mp-tn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+      .mpo-maps-panel .mp-tm { flex:none; font-weight:800; font-size:12px; }
+      .mpo-maps-panel .mp-tm.ok { color:#86efac; } .mpo-maps-panel .mp-tm.warn { color:#fde68a; } .mpo-maps-panel .mp-tm.bad { color:#fca5a5; }
+      .mpo-maps-panel .mp-empty { color:#9aa0c3; padding:20px; text-align:center; }
       .mpo-maps-panel .mp-cands { display:flex; flex-direction:column; gap:8px; min-height:0; overflow:auto; }
       .mpo-maps-panel .mp-item { display:flex; flex-direction:column; background:rgba(255,255,255,.05); border-radius:12px; padding:8px; gap:6px; border-top:3px solid #22c55e; flex:none; }
       .mpo-maps-panel .mp-item.open { flex:1 1 0; min-height:320px; }
@@ -1466,6 +1511,7 @@
           <button class="mpo-btn" data-rv="SKIP"><b>S</b>&nbsp;Skip</button>
         </div>`;
     }
+    h.classList.toggle("under-maps", !!(rv && mapsPanelOpen()));
     h.innerHTML = `
       <div class="top">
         <div class="spin ${spin}"></div>

@@ -66,21 +66,20 @@ next();
   const panel = d.getElementById("mpo-maps");
   console.log("review muncul untuk:", api.run.review && api.run.review.tm.id_table);
   console.log("panel peta:", !!panel, "| iframe:", panel && [...panel.querySelectorAll("iframe")].map(f => decodeURIComponent(f.src).replace("https://www.google.com/maps?output=embed&z=16&q=", "")));
-  const items = [...panel.querySelectorAll(".mp-item")].map(i => i.querySelector(".mp-badge").textContent + " " + i.querySelector(".mp-n").textContent + (i.classList.contains("open") ? " [terbuka]" : " [tertutup]") + (i.classList.contains("sel") ? " [dipilih]" : ""));
-  console.log("label kiri:", panel.querySelector(".mp-side .mp-badge").textContent, "| kanan:", items);
+  const tabs = () => [...d.querySelectorAll("#mpo-maps [data-tab]")].map(t => t.querySelector(".mp-badge").textContent + (t.classList.contains("on") ? "*" : ""));
+  console.log("label kiri:", panel.querySelector(".mp-side.data .mp-badge").textContent, "| tab kanan:", tabs());
   console.log("label di kartu halaman:", [...d.querySelectorAll(".mp-candidate-card")].map(c => c.dataset.idsbr + ":" + (c.querySelector(".mpo-klabel")?.textContent || "-")));
-  // tutup K1, pilih K2
-  // tombol keputusan ada di panel peta
-  console.log("tombol panel:", [...panel.querySelectorAll(".mp-bar [data-rv], [data-match]")].map(b => b.textContent.trim()).join(" | "));
-  // tutup K1, kecilkan & tampilkan lagi dengan G
-  panel.querySelector('[data-toggle="111"]').click();
+  console.log("jumlah peta tampil:", d.querySelectorAll("#mpo-maps iframe").length);
+  console.log("tombol panel:", [...d.querySelectorAll("#mpo-maps .mp-bar [data-rv], #mpo-maps [data-match]")].map(b => b.textContent.trim()).join(" | "));
+  // pindah ke K2 dengan tombol angka 2
+  d.body.dispatchEvent(new w.KeyboardEvent("keydown", { key: "2", bubbles: true }));
+  console.log("setelah tekan 2:", tabs(), "| kartu terpilih:", d.querySelector(".mp-candidate-card.selected")?.dataset.idsbr);
+  // kecilkan & tampilkan lagi
   d.body.dispatchEvent(new w.KeyboardEvent("keydown", { key: "g", bubbles: true }));
   console.log("dikecilkan:", d.getElementById("mpo-maps").classList.contains("min"));
   d.body.dispatchEvent(new w.KeyboardEvent("keydown", { key: "g", bubbles: true }));
-  const p2 = d.getElementById("mpo-maps");
-  console.log("setelah tutup K1:", [...p2.querySelectorAll(".mp-item")].map(i => i.querySelector(".mp-badge").textContent + (i.classList.contains("open") ? " terbuka" : " tertutup")));
-  // klik "✓ Match K2" = langsung diputuskan, tanpa tombol lain
-  p2.querySelector('[data-match="333"]').click();
+  // klik "✓ Match K2"
+  d.querySelector('#mpo-maps [data-match="333"]').click();
   for (let i = 0; i < 200 && api.run.active; i++) await new Promise(r => setTimeout(r, 50));
   console.log("urutan aksi:", saved);
   console.log("pesan akhir:", api.run.lines.at(-1));
