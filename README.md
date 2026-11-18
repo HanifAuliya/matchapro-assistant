@@ -54,7 +54,7 @@ Empat pertanyaan berurutan; jawaban "ya" pertama menentukan aksi.
 Briefing meminta kasus "pengusaha sama, alamat sedikit beda" dicek lokasinya dulu dan direview manual. Script tidak menebak lokasi:
 
 1. Pertama kali ditemukan → **Skip** dan diingat.
-2. Saat data itu muncul lagi → script berhenti dan menampilkan **peta Google Maps di halaman**: kiri **DATA**, kanan **K1, K2, …** (kandidat rekomendasi, bisa dibuka-tutup, label sama dipasang di kartu kandidat).
+2. Saat data itu muncul lagi → script berhenti dan menampilkan **peta Google Maps di halaman**: kiri **DATA**, kanan **K1, K2, …** (kandidat rekomendasi, bisa dibuka-tutup, label sama dipasang di kartu kandidat). Di atas tiap peta ada rincian **Pengusaha · Jenis usaha · Alamat · Wilayah · Status** dengan tanda ✓ sama / ≈ sebagian / ✗ beda, dan kata yang sama dengan DATA diberi stabilo.
 3. Operator memutuskan langsung dari panel peta:
    - **✓ Match K1 / K2 …** di kandidat yang lokasinya sama → langsung di-Match dengan kandidat itu,
    - **✗ Unmatch** → tidak ada kandidat yang lokasinya sama,
@@ -85,6 +85,7 @@ Tambahkan kasus baru ke `tests/rules.test.js` setiap kali menemukan keputusan ya
 
 ## Riwayat versi
 
+- **2.4.2** — panel peta menampilkan rincian per kandidat (pengusaha, jenis usaha, alamat, wilayah, status) dengan tanda sama/beda dan stabilo pada kata yang sama dengan DATA.
 - **2.4.1** — panel peta: tombol "Pilih ini" diganti "✓ Match K…" yang langsung menjalankan Match; tombol Unmatch dan Skip ditambahkan di panel (sebelumnya script menunggu tanpa tanda setelah kandidat dipilih).
 - **2.4.0** — aturan diperbaiki dari uji coba 45 data dummy (multi-kurung, alamat tanpa spasi/romawi, kelompok produk, nama 1 kata, alamat menyebut desa kandidat).
 - **2.3.0** — panel peta berlabel DATA / K1 / K2, kandidat bisa dibuka-tutup, kasus ≥2 kandidat cocok ikut direview.

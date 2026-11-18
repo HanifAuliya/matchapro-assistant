@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MatchaPro Matching Otomatis
 // @namespace    hanif-bps-hst
-// @version      2.4.1
+// @version      2.4.2
 // @description  Matching manual SBR (SE2026) dengan aturan briefing: yang jelas Match/Unmatch dikerjakan otomatis, yang ragu di-Skip. Badge cek di tiap kandidat, log, ekspor CSV.
 // @match        https://matchapro.web.bps.go.id/matching/kegiatan/*
 // @run-at       document-start
@@ -13,7 +13,7 @@
   if (window.__mpoLoaded) return;
   window.__mpoLoaded = true;
 
-  const APP = { name: "Matching Otomatis", version: "2.4.1", badge: "MP" };
+  const APP = { name: "Matching Otomatis", version: "2.4.2", badge: "MP" };
   const CONF_KEY = "mpo_conf";
   const LOG_KEY = "mpo_log_" + location.pathname;
   const DAY_KEY = "mpo_day_" + location.pathname;
@@ -657,6 +657,74 @@
     }
     return recs;
   }
+  /* ---------- Rincian perbandingan di panel peta ----------
+     Tiap baris: Pengusaha · Jenis usaha · Alamat · Wilayah · Status, dengan tanda sama/beda.
+     Kata yang sama dengan DATA diberi stabilo, supaya kelihatan bedanya di mana. */
+  const titleCase = (t) => (t.length <= 3 && /\d/.test(t) ? t.toUpperCase() : t.charAt(0).toUpperCase() + t.slice(1));
+  const words = (arr) => (arr && arr.length ? arr.map(titleCase).join(" ") : "");
+  function hl(text, other) {
+    // tandai kata di "text" yang juga ada di "other" (dibandingkan setelah dinormalisasi)
+    const set = new Set(norm(other).split(" ").filter((t) => t.length > 1));
+    return String(text || "")
+      .split(/(\s+)/)
+      .map((w) => (set.has(norm(w)) && norm(w).length > 1 ? `<mark>${esc(w)}</mark>` : esc(w)))
+      .join("");
+  }
+  const mark = (lvl, text) => `<span class="mp-mk ${lvl}">${lvl === "ok" ? "✓" : lvl === "warn" ? "≈" : "✗"} ${esc(text)}</span>`;
+  function factsHtml(o, tm, isData) {
+    const p = splitName(o.nama);
+    const t = splitName(tm.nama);
+    const owner = words(p.owner) || "—";
+    const biz = words(p.generic) || "—";
+    const wil = [o.nmdesa && `Desa ${titleCase(String(o.nmdesa).toLowerCase())}`, o.nmkec && `Kec ${titleCase(String(o.nmkec).toLowerCase())}`]
+      .filter(Boolean)
+      .join(", ");
+    const kode = [o.kdkec, o.kddesa].filter(Boolean).join(".");
+    if (isData) {
+      return `<div class="mp-facts">
+        <div class="k">Pengusaha</div><div class="v"><b>${esc(owner)}</b>${p.owner.length ? ` <span class="mp-dim">(${p.owner.length} kata)</span>` : ` <span class="mp-mk bad">tanpa nama pengusaha</span>`}</div>
+        <div class="k">Jenis usaha</div><div class="v">${esc(biz)}</div>
+        <div class="k">Alamat</div><div class="v">${esc(o.alamat || "—")}</div>
+        <div class="k">Wilayah</div><div class="v">${esc(wil || "—")} <span class="mp-dim">${esc(kode)}</span></div>
+      </div>`;
+    }
+    const an = analyze(o, tm);
+    const f = an.f;
+    const ownerMk = !f.ownerBoth
+      ? mark("warn", "tidak ada nama")
+      : f.ownerSim === 1
+        ? mark(f.ownerWords >= 2 ? "ok" : "warn", f.ownerWords >= 2 ? "sama" : "sama (1 kata)")
+        : f.ownerContain
+          ? mark("warn", "sebagian sama")
+          : f.ownerSim > 0
+            ? mark("warn", "mirip sebagian")
+            : mark("bad", "beda");
+    const bizMk = f.bizDiff
+      ? mark("bad", "beda jenis")
+      : f.special
+        ? mark("bad", "gudang/koperasi/kantin")
+        : p.products.length && t.products.length && p.products.some((g) => t.products.includes(g))
+          ? mark("ok", "sejenis")
+          : mark("warn", "tidak bisa dibandingkan");
+    const addrMk = f.addrSim >= 60 ? mark("ok", `mirip ${f.addrSim}%`) : mark(f.addrSim >= 30 ? "warn" : "bad", `mirip ${f.addrSim}%`);
+    const wilMk =
+      f.wil === "same"
+        ? mark("ok", "desa sama")
+        : f.wil === "desa"
+          ? mark("warn", "desa beda, kec sama")
+          : f.wil === "kec"
+            ? mark("bad", "kec beda")
+            : mark("bad", "kab beda");
+    const otherNames = [...t.alts.flat()].join(" ");
+    return `<div class="mp-facts">
+      <div class="k">Pengusaha</div><div class="v"><b>${hl(owner, otherNames)}</b> ${ownerMk}</div>
+      <div class="k">Jenis usaha</div><div class="v">${hl(biz, t.generic.join(" "))} ${bizMk}</div>
+      <div class="k">Alamat</div><div class="v">${hl(o.alamat || "—", tm.alamat)} ${addrMk}</div>
+      <div class="k">Wilayah</div><div class="v">${esc(wil || "—")} <span class="mp-dim">${esc(kode)}</span> ${wilMk}${f.mentionsDesa ? " " + mark("warn", "alamat menyebut desa lain") : ""}</div>
+      <div class="k">Status</div><div class="v">${f.aktif ? mark("ok", "AKTIF") : mark("bad", o.status_perusahaan || "tidak aktif")} <span class="mp-dim">IDSBR ${esc(o.idsbr || o.perusahaan_id || "")}</span></div>
+    </div>`;
+  }
+
   function mapsItemHtml(it) {
     const open = maps.open.has(it.idsbr);
     const sel = selectedId() === it.idsbr;
@@ -664,11 +732,11 @@
     return `<div class="mp-item ${open ? "open" : ""} ${sel ? "sel" : ""}" data-id="${esc(it.idsbr)}">
       <div class="mp-ihead" data-toggle="${esc(it.idsbr)}">
         <span class="mp-badge cand">${esc(it.label)}</span>
-        <div class="mp-iinfo"><div class="mp-n">${esc(c.nama || "-")}</div><div class="mp-a">${esc(placeQuery(c) || "-")}</div></div>
-        <span class="mp-chip">alamat ${it.addrSim}%</span>${it.wil && it.wil !== "same" ? `<span class="mp-chip bad">${it.wil === "desa" ? "desa beda" : "kec beda"}</span>` : ""}${it.part ? `<span class="mp-chip bad">nama sebagian</span>` : ""}${it.aktif ? "" : `<span class="mp-chip bad">tidak aktif</span>`}
+        <div class="mp-iinfo"><div class="mp-n">${esc(c.nama || "-")}</div></div>
         <button class="mpo-btn sm go" data-match="${esc(it.idsbr)}" title="Match data ini dengan ${esc(it.label)}">✓ Match ${esc(it.label)}</button>
-        <span class="mp-chev">${open ? "▾" : "▸"}</span>
+        <span class="mp-chev" title="Buka/tutup peta">${open ? "▾ peta" : "▸ peta"}</span>
       </div>
+      ${run.review ? factsHtml(c, run.review.tm, false) : ""}
       ${open ? `<iframe loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="${embedUrl(c, maps.mode)}"></iframe>` : ""}
     </div>`;
   }
@@ -723,7 +791,8 @@
       <div class="mp-grid">
         <div class="mp-side">
           <div class="mp-ihead static"><span class="mp-badge data">DATA</span>
-            <div class="mp-iinfo"><div class="mp-n">${esc(tm.nama || "-")}</div><div class="mp-a">${esc(placeQuery(tm) || "-")}</div></div></div>
+            <div class="mp-iinfo"><div class="mp-n">${esc(tm.nama || "-")}</div></div></div>
+          ${factsHtml(tm, tm, true)}
           <div class="mp-data-slot"></div>
         </div>
         <div class="mp-cands">${items.map(mapsItemHtml).join("")}</div>
@@ -792,8 +861,8 @@
           resolve(r);
         },
       };
-      step(2, "Menunggu keputusanmu");
       showMapsPanel();
+      step(2, "Menunggu keputusanmu"); // digambar setelah panel ada -> bar bawah versi ringkas
     });
   }
   function reviewChoose(what) {
@@ -1113,7 +1182,7 @@
       .mpo-hud .rv-acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; align-items:center; }
       .mpo-hud .chips { display:flex; gap:6px; margin-left:auto; }
       /* panel peta: DATA kiri, kandidat K1/K2 kanan */
-      .mpo-maps-panel { position:fixed; left:50%; top:64px; transform:translateX(-50%); z-index:1000001; width:min(1280px,96vw); height:calc(100vh - 64px - 330px); min-height:280px; background:rgba(17,19,36,.94); backdrop-filter:blur(12px); color:#eef0ff; border-radius:16px; padding:10px; box-shadow:0 20px 50px rgba(10,10,30,.45); display:flex; flex-direction:column; gap:8px; font-size:13px; }
+      .mpo-maps-panel { position:fixed; left:50%; top:64px; transform:translateX(-50%); z-index:1000001; width:min(1280px,96vw); height:calc(100vh - 64px - 236px); min-height:320px; background:rgba(17,19,36,.94); backdrop-filter:blur(12px); color:#eef0ff; border-radius:16px; padding:10px; box-shadow:0 20px 50px rgba(10,10,30,.45); display:flex; flex-direction:column; gap:8px; font-size:13px; }
       .mpo-maps-panel.min { height:auto; min-height:0; }
       .mpo-maps-panel.min .mp-grid { display:none; }
       .mpo-maps-panel .mp-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -1127,17 +1196,26 @@
       .mpo-maps-panel .mp-side { display:flex; flex-direction:column; min-height:0; background:rgba(255,255,255,.05); border-radius:12px; padding:8px; gap:6px; border-top:3px solid #818cf8; }
       .mpo-maps-panel .mp-cands { display:flex; flex-direction:column; gap:8px; min-height:0; overflow:auto; }
       .mpo-maps-panel .mp-item { display:flex; flex-direction:column; background:rgba(255,255,255,.05); border-radius:12px; padding:8px; gap:6px; border-top:3px solid #22c55e; flex:none; }
-      .mpo-maps-panel .mp-item.open { flex:1 1 0; min-height:220px; }
+      .mpo-maps-panel .mp-item.open { flex:1 1 0; min-height:320px; }
       .mpo-maps-panel .mp-item.sel { box-shadow:0 0 0 2px #22c55e inset; }
       .mpo-maps-panel .mp-ihead { display:flex; align-items:center; gap:8px; cursor:pointer; }
       .mpo-maps-panel .mp-ihead.static { cursor:default; }
       .mpo-maps-panel .mp-iinfo { flex:1; min-width:0; }
+      .mpo-maps-panel .mp-facts { display:grid; grid-template-columns:88px 1fr; gap:3px 10px; font-size:12px; line-height:1.45; padding:6px 8px; background:rgba(0,0,0,.22); border-radius:8px; }
+      .mpo-maps-panel .mp-facts .k { color:#9aa0c3; }
+      .mpo-maps-panel .mp-facts .v { color:#eef0ff; min-width:0; overflow-wrap:anywhere; }
+      .mpo-maps-panel .mp-facts mark { background:rgba(250,204,21,.28); color:#fef3c7; border-radius:3px; padding:0 2px; }
+      .mpo-maps-panel .mp-dim { color:#7d83a8; font-size:11px; }
+      .mpo-maps-panel .mp-mk { display:inline-block; font-size:11px; font-weight:700; padding:0 6px; border-radius:99px; margin-left:4px; white-space:nowrap; }
+      .mpo-maps-panel .mp-mk.ok { background:rgba(34,197,94,.22); color:#86efac; }
+      .mpo-maps-panel .mp-mk.warn { background:rgba(251,191,36,.2); color:#fde68a; }
+      .mpo-maps-panel .mp-mk.bad { background:rgba(248,113,113,.22); color:#fca5a5; }
       .mpo-maps-panel .mp-badge { flex:none; font-weight:800; font-size:12px; padding:3px 8px; border-radius:7px; color:#fff; }
       .mpo-maps-panel .mp-badge.data { background:#6366f1; }
       .mpo-maps-panel .mp-badge.cand { background:#16a34a; }
       .mpo-maps-panel .mp-chip { flex:none; font-size:11px; padding:2px 7px; border-radius:99px; background:rgba(255,255,255,.1); color:#c7cbf0; }
       .mpo-maps-panel .mp-chip.bad { background:rgba(248,113,113,.2); color:#fca5a5; }
-      .mpo-maps-panel .mp-chev { flex:none; color:#9aa0c3; width:12px; }
+      .mpo-maps-panel .mp-chev { flex:none; color:#9aa0c3; font-size:11.5px; white-space:nowrap; }
       .mpo-maps-panel .mp-n { font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .mpo-maps-panel .mp-a { font-size:12px; color:#c7cbf0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .mpo-maps-panel iframe { flex:1; width:100%; min-height:0; border:0; border-radius:10px; background:#fff; }
